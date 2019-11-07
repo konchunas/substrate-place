@@ -58,6 +58,7 @@ pub type Nonce = u64;
 mod template;
 
 mod substratekitties;
+mod place;
 
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
@@ -216,6 +217,7 @@ construct_runtime!(
 		ExampleModule: substrate_module_template::{Module, Call, Storage, Event<T>},
     
         Substratekitties: substratekitties::{Module, Call, Storage, Event<T>},
+        Place: place::{Module, Call, Storage, Event<T>},
 	}
 );
 
@@ -310,5 +312,9 @@ impl_runtime_apis! {
 }
 
 impl substratekitties::Trait for Runtime {
+    type Event = Event;
+}
+
+impl place::Trait for Runtime {
     type Event = Event;
 }
