@@ -4,6 +4,7 @@ use system::ensure_signed;
 use runtime_primitives::traits::{As, Hash, Zero};
 use support::storage_items;
 use rstd::prelude::*;
+use runtime_io::print;
 // use substrate_primitives::U256;
 use parity_codec::{Encode, Decode};
 // use runtime_io::with_storage;
@@ -18,8 +19,6 @@ type Color = [u8; 3];
 pub struct Pixel<Balance> {
     price: Balance,
     color: Color, //rgb
-    // x: u16,
-    // y: u16,
 }
 
 pub trait Trait: balances::Trait {
@@ -30,29 +29,19 @@ decl_event!(
     pub enum Event<T>
     where
         <T as system::Trait>::AccountId,
-        <T as system::Trait>::Hash,
         <T as balances::Trait>::Balance
     {
-        Bought(AccountId, Hash, Balance),
+        Bought(AccountId, u16, u16, Balance),
     }
 );
 
 decl_storage! {
     trait Store for Module<T: Trait> as PlaceStorage {
 
-        OwnedPixelArray get(pixel_of_owner_by_index): map (T::AccountId, u64) => T::Hash;
+        OwnedPixelArray get(pixel_of_owner_by_index): map (T::AccountId, u64) => (u16, u16);
         OwnedPixelCount get(owned_pixel_count): map T::AccountId => u64;
-        OwnedPixelIndex: map T::Hash => u64;
-
-        Field: linked_map (u16, u16) => T::Hash;
-        Pixels get(pixel): map T::Hash => Pixel<T::Balance>;
-        PixelOwner get(owner_of): map T::Hash => Option<T::AccountId>;
+        PixelOwner get(owner_of): map (u16, u16) => Option<T::AccountId>;
         
-        // Chunk: [u16; 255];
-
-        // Chunks: map u16 => (linked_map (u16) => Pixel<T::Balance>);
-        // Chunks: map u16 => Vec<Pixel<T::Balance>>;
-
         Chunks get(chunks) build(|_config: &GenesisConfig<T>| {
             let empty = Pixel {
                 price: <T::Balance as As<u64>>::sa(1),
@@ -66,21 +55,7 @@ decl_storage! {
 				.collect::<Vec<_>>()
 		}): map u16 => Vec<Pixel<T::Balance>>;
 
-        Chonky get(chonky) build(|config| vec![(0, vec![1u8; 3]), (3, vec![5u8; 4])]): map u16 => Vec<u8>;
-
-        PlainValue build(|config| 13): u32;
     }
-    
-    // add_extra_genesis {
-	// 	config(amount): u32;
-	// 	build(|storage: &mut runtime_primitives::StorageOverlay, _: &mut runtime_primitives::ChildrenStorageOverlay, config: &GenesisConfig<T>| {
-	// 		with_storage(storage, || {
-	// 			for i in 0..config.amount {
-    //                 <Field<T>>::insert((i,i), i);
-	// 			}
-	// 		});
-	// 	});
-	// }
 }
 
 decl_module! {
@@ -90,54 +65,32 @@ decl_module! {
 
         fn purchase_pixel(origin, x: u16, y: u16, color: Color, new_price: T::Balance) -> Result {
             let sender = ensure_signed(origin)?;
-            let pixel_id = (x,y).using_encoded(<T as system::Trait>::Hashing::hash);
 
+            let (chunk_num, index) = from_cartesian(x,y);
+            print(chunk_num as u64);
+
+            let owned_pixel_count = Self::owned_pixel_count(&sender);
+            let new_owned_pixel_count = owned_pixel_count.checked_add(1).ok_or("Overflow buying new pixel for user")?;
+
+            <OwnedPixelArray<T>>::insert((sender.clone(), owned_pixel_count), (x,y));
+            <OwnedPixelCount<T>>::insert(&sender, new_owned_pixel_count);
+            <PixelOwner<T>>::insert((x,y), &sender);
+
+            //TODO price check
             let new_pixel = Pixel {
-                // x,
-                // y,
                 price: new_price,
                 color
             };
 
-            // let owned_pixel_count = Self::owned_pixel_count(&sender);
-            // let new_owned_pixel_count = owned_pixel_count.checked_add(1).ok_or("Overflow adding new pixel")?;
+            <Chunks<T>>::mutate(chunk_num, |chunk| chunk[index as usize] = new_pixel);
 
-            // <OwnedPixelArray<T>>::insert((sender.clone(), owned_pixel_count), pixel_id);
-            // <OwnedPixelCount<T>>::insert(&sender, new_owned_pixel_count);
-            // <OwnedPixelIndex<T>>::insert(pixel_id, owned_pixel_count);
-
-            // <Pixels<T>>::insert(pixel_id, new_pixel);
-            // <PixelOwner<T>>::insert(pixel_id, &sender);
-            <Field<T>>::insert((x,y), pixel_id);
-
-            Self::deposit_event(RawEvent::Bought(sender, pixel_id, new_price));
+            Self::deposit_event(RawEvent::Bought(sender, x, y, new_price));
 
             Ok(())
         }
 
-        // fn create_a_bunch_of_pixels(origin, amount: u16) -> Result {
-        //     for i in 0..amount {
-        //         let hash = (i,i).using_encoded(<T as system::Trait>::Hashing::hash);
-        //         <Field<T>>::insert((i,i), hash);
-        //     }
-        //     let dummy = Pixel {
-        //         price: <T::Balance as As<u64>>::sa(1),
-        //         color: [1,2,3]
-        //     };
-        //     let chunk = vec![dummy; 64];
-        //     // chunk[1] = 3u8;
-        //     <Chunks<T>>::insert(0, chunk);
-            
-        //     let dummy = Pixel {
-        //         price: <T::Balance as As<u64>>::sa(5),
-        //         color: [2,6,7]
-        //     };
-        //     let chunk = vec![dummy; 64];
-        //     <Chunks<T>>::insert(1, chunk);
-        //     Ok(())
-        // }
-
         /// Initialize method for root to create empty field of specified size 
+        /// TODO remove origin
         pub fn initialize_field(origin, field_size: u16) -> Result {
             let empty = Pixel {
                 price: <T::Balance as As<u64>>::sa(1),
