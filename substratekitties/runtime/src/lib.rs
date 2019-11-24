@@ -216,7 +216,6 @@ construct_runtime!(
 		TemplateModule: template::{Module, Call, Storage, Event<T>},
 		ExampleModule: substrate_module_template::{Module, Call, Storage, Event<T>},
     
-        Substratekitties: substratekitties::{Module, Call, Storage, Event<T>},
         Place: place::{Module, Call, Storage, Event<T>},
 	}
 );
@@ -309,10 +308,6 @@ impl_runtime_apis! {
 			Consensus::authorities()
 		}
 	}
-}
-
-impl substratekitties::Trait for Runtime {
-    type Event = Event;
 }
 
 impl place::Trait for Runtime {
