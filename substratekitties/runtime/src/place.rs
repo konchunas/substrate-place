@@ -96,7 +96,7 @@ decl_module! {
                 price: <T::Balance as As<u64>>::sa(1),
                 color: [1,1,1]
             };
-            for i in 0..field_size {
+            for i in 0..field_size*field_size {
                 let chunk = vec![empty.clone(); CHUNK_SIDE*CHUNK_SIDE];
                 <Chunks<T>>::insert(i, chunk);
             }
