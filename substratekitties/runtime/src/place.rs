@@ -1,12 +1,14 @@
-use support::{decl_storage, decl_module, StorageValue, StorageMap,
-    dispatch::Result, ensure, decl_event, traits::Currency};
-use system::ensure_signed;
-use runtime_primitives::traits::{As, Hash, Zero};
-use support::storage_items;
 use rstd::prelude::*;
 use runtime_io::print;
+use runtime_primitives::traits::{As, Hash, Zero};
+use support::storage_items;
+use support::{
+    decl_event, decl_module, decl_storage, dispatch::Result, ensure, traits::Currency, StorageMap,
+    StorageValue,
+};
+use system::ensure_signed;
 // use substrate_primitives::U256;
-use parity_codec::{Encode, Decode};
+use parity_codec::{Decode, Encode};
 // use runtime_io::with_storage;
 
 const CHUNK_SIDE: usize = 8;
@@ -69,6 +71,10 @@ decl_module! {
             let (chunk_num, index) = from_cartesian(x,y);
             print(chunk_num as u64);
 
+            if !<Chunks<T>>::exists(chunk_num) {
+                Self::init_chunk(chunk_num)?;
+            }
+
             let owned_pixel_count = Self::owned_pixel_count(&sender);
             let new_owned_pixel_count = owned_pixel_count.checked_add(1).ok_or("Overflow buying new pixel for user")?;
 
@@ -94,7 +100,7 @@ decl_module! {
         pub fn initialize_field(origin, field_size: u16) -> Result {
             let empty = Pixel {
                 price: <T::Balance as As<u64>>::sa(1),
-                color: [1,1,1]
+                color: [255,255,255]
             };
             for i in 0..field_size*field_size {
                 let chunk = vec![empty.clone(); CHUNK_SIDE*CHUNK_SIDE];
@@ -115,9 +121,17 @@ decl_module! {
 }
 
 impl<T: Trait> Module<T> {
+    fn init_chunk(index: u16) -> Result {
+        let empty_pixel = Pixel {
+            price: <T::Balance as As<u64>>::sa(1), //minimum price
+            color: [255, 255, 255], //white
+        };
+        <Chunks<T>>::insert(index, vec![empty_pixel.clone(); CHUNK_SIDE * CHUNK_SIDE]);
+        Ok(())
+}
 }
 
-fn from_cartesian(x: u16, y: u16) -> (u16,u16) {
+fn from_cartesian(x: u16, y: u16) -> (u16, u16) {
     let chunk_x = x / 8;
     let chunk_y = y / 8;
     let chunk_number = chunk_x + chunk_y * FIELD_SIDE as u16;
@@ -129,8 +143,8 @@ fn from_cartesian(x: u16, y: u16) -> (u16,u16) {
     (chunk_number, index)
 }
 
-fn to_cartesian(x: u16, y: u16) -> (u16,u16) {
-    (2,3)
+fn to_cartesian(x: u16, y: u16) -> (u16, u16) {
+    (2, 3)
 }
 
 #[cfg(test)]
@@ -139,27 +153,26 @@ mod tests {
     
     #[test]
     fn cartesian_conversion_first_chunk() {
-        assert_eq!(from_cartesian(0,0), (0,0));
-        assert_eq!(from_cartesian(7,0), (0,7));
-        assert_eq!(from_cartesian(0,1), (0,8));
-        assert_eq!(from_cartesian(1,1), (0,9));
-        assert_eq!(from_cartesian(0,2), (0,16));
+        assert_eq!(from_cartesian(0, 0), (0, 0));
+        assert_eq!(from_cartesian(7, 0), (0, 7));
+        assert_eq!(from_cartesian(0, 1), (0, 8));
+        assert_eq!(from_cartesian(1, 1), (0, 9));
+        assert_eq!(from_cartesian(0, 2), (0, 16));
     }
 
     #[test]
     fn cartesian_conversion_chunk_numbers() {
-        assert_eq!(from_cartesian(8,0), (1,0));
-        assert_eq!(from_cartesian(9,0), (1,1));
-        assert_eq!(from_cartesian(8,1), (1,8));
-        assert_eq!(from_cartesian(15,0), (1,7));
+        assert_eq!(from_cartesian(8, 0), (1, 0));
+        assert_eq!(from_cartesian(9, 0), (1, 1));
+        assert_eq!(from_cartesian(8, 1), (1, 8));
+        assert_eq!(from_cartesian(15, 0), (1, 7));
 
-        assert_eq!(from_cartesian(0,8), (8,0));
-        assert_eq!(from_cartesian(0,9), (8,8));
+        assert_eq!(from_cartesian(0, 8), (8, 0));
+        assert_eq!(from_cartesian(0, 9), (8, 8));
 
-        assert_eq!(from_cartesian(8,8), (9,0));
-        assert_eq!(from_cartesian(16,16), (18,0));
+        assert_eq!(from_cartesian(8, 8), (9, 0));
+        assert_eq!(from_cartesian(16, 16), (18, 0));
 
-        assert_eq!(from_cartesian(56,0), (7,0));
+        assert_eq!(from_cartesian(56, 0), (7, 0));
     }
-
-}
+    }
