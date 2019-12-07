@@ -47,7 +47,6 @@ decl_storage! {
         PixelOwner get(owner_of): map (i64, i64) => Option<T::AccountId>;
 
         Chunks get(chunks): map (i32, i32) => Vec<Pixel<T::Balance>>;
-
     }
 }
 
@@ -71,7 +70,7 @@ decl_module! {
                 }
                 let sudo_user = <sudo::Module<T>>::key();
                 print("sending to sudo");
-                <balances::Module<T> as Currency<_>>::transfer(&sender, &sudo_user, default_price)?;
+                <balances::Module<T> as Currency<_>>::transfer(&sender, &sudo_user, new_price)?;
 
                 print("Init chunk");
                 Self::init_chunk(chunk_x, chunk_y)?;
@@ -80,6 +79,9 @@ decl_module! {
                 let prev_pixel = &prev_chunk[index as usize];
                 let prev_owner = Self::owner_of((x,y)).ok_or("Pixel don't have and owner")?;
 
+                if prev_pixel.price >= new_price {
+                    return Err("New price should be greater than previous");
+                }
                 // If pixel had an owner we are going to return all the funds back to him and remove ownership
                 <balances::Module<T> as Currency<_>>::transfer(&sender, &prev_owner, prev_pixel.price)?;
 
@@ -225,7 +227,7 @@ mod tests {
     fn purchase_pixel_should_work() {
         with_externalities(&mut build_ext(), || {
             assert_ok!(Place::purchase_pixel(
-                Origin::signed(10),
+                Origin::signed(1),
                 0,
                 0,
                 [1, 2, 3],
@@ -241,7 +243,7 @@ mod tests {
     fn purchase_negative_chunk_should_work() {
         with_externalities(&mut build_ext(), || {
             assert_ok!(Place::purchase_pixel(
-                Origin::signed(10),
+                Origin::signed(1),
                 -1,
                 -1,
                 [1, 2, 3],
@@ -264,11 +266,10 @@ mod tests {
             assert_eq!(chunk[0].price, 1);
         })
     }
-
+    
     #[test]
     fn owner_can_transfer() {
         with_externalities(&mut build_ext(), || {
-            // create a kitty with account #10.
             assert_eq!(Place::owner_of((1, 1)), None);
             assert_ok!(Place::purchase_pixel(
                 Origin::signed(1),
@@ -283,9 +284,6 @@ mod tests {
             // first pixel of 10th user is at (1,1)
             assert_eq!(Place::pixel_of_owner_by_index((1, 0)), (1, 1));
 
-            // check that we received default pixel price
-            assert_eq!(Balances::free_balance(Sudo::key()), 1);
-
             // another user purchases the same pixel
             assert_ok!(Place::purchase_pixel(Origin::signed(5), 1, 1, [1, 2, 3], 2));
             assert_eq!(Place::owner_of((1, 1)), Some(5));
@@ -297,6 +295,79 @@ mod tests {
 
             println!("sudo balance {}", Balances::free_balance(Sudo::key()));
         })
+    }
+
+    #[test]
+    fn cant_buy_not_enough_funds() {
+        with_externalities(&mut build_ext(), || {
+            // this fails since 127th user has no money
+            assert!(Place::purchase_pixel(
+                Origin::signed(127),
+                1, 1,
+                [1, 2, 3],
+                1
+            ).is_err());
+        });
+    }
+    #[test]
+    fn sudo_receives_funds() {
+        with_externalities(&mut build_ext(), || {
+            assert_eq!(Place::owner_of((1, 1)), None);
+            assert_ok!(Place::purchase_pixel(
+                Origin::signed(1),
+                1, 1,
+                [1, 2, 3],
+                10
+            ));
+
+            // check that we received default pixel price
+            assert_eq!(Balances::free_balance(Sudo::key()), 10);
+        });
+    }
+
+    #[test]
+    fn should_refund_pixel() {
+        with_externalities(&mut build_ext(), || {
+            //user purchases pixel
+            assert_ok!(Place::purchase_pixel(Origin::signed(1), 1, 1, [1, 2, 3], 10));
+            // another user purchases the same pixel paying more
+            assert_ok!(Place::purchase_pixel(Origin::signed(2), 1, 1, [1, 2, 3], 15));
+            // first user receives its funds back
+            assert_eq!(Balances::free_balance(1), 10);
+        });
+    }
+    
+    #[test]
+    fn pixel_refund_price_is_low() {
+        with_externalities(&mut build_ext(), || {
+            //user purchases pixel
+            assert_ok!(Place::purchase_pixel(Origin::signed(1), 1, 1, [1, 2, 3], 10));
+            // another user fails to purchase the same pixel paying less
+            assert!(Place::purchase_pixel(Origin::signed(2), 1, 1, [1, 2, 3], 5).is_err());
+        });
+    }
+
+    #[test]
+    fn pixel_refund_not_enough_funds() {
+        with_externalities(&mut build_ext(), || {
+            //user purchases pixel
+            assert_ok!(Place::purchase_pixel(Origin::signed(2), 1, 1, [1, 2, 3], 20));
+            // another user fails to purchase the same pixel not having enough funds
+            assert!(Place::purchase_pixel(Origin::signed(1), 1, 1, [1, 2, 3], 25).is_err());
+        });
+    }
+    #[test]
+    fn user_buys_from_himself() {
+        with_externalities(&mut build_ext(), || {
+            //user purchases pixel
+            assert_ok!(Place::purchase_pixel(Origin::signed(1), 1, 1, [1, 2, 3], 3));
+            // same user fails to buy with the same price
+            assert!(Place::purchase_pixel(Origin::signed(1), 1, 1, [1, 2, 3], 3).is_err());
+            // same user fails to buy with lesser price
+            assert!(Place::purchase_pixel(Origin::signed(1), 1, 1, [1, 2, 3], 2).is_err());
+            // same user succeeds buying with greater price
+            assert_ok!(Place::purchase_pixel(Origin::signed(1), 1, 1, [1, 2, 3], 4));
+        });
     }
 
     #[test]
