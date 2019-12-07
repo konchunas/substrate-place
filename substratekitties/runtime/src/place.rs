@@ -1,10 +1,10 @@
 use rstd::prelude::*;
 
-use runtime_primitives::traits::As;
 use runtime_io::print;
+use runtime_primitives::traits::As;
 use support::{
-    decl_event, decl_module, decl_storage, dispatch::Result, StorageMap,
-    StorageValue, traits::Currency
+    decl_event, decl_module, decl_storage, dispatch::Result, traits::Currency, StorageMap,
+    StorageValue,
 };
 use system::ensure_signed;
 // use substrate_primitives::U256;
@@ -45,7 +45,7 @@ decl_storage! {
         OwnedPixelArray get(pixel_of_owner_by_index): map (T::AccountId, u64) => (i64, i64);
         OwnedPixelCount get(owned_pixel_count): map T::AccountId => u64;
         PixelOwner get(owner_of): map (i64, i64) => Option<T::AccountId>;
-        
+
         Chunks get(chunks): map (i32, i32) => Vec<Pixel<T::Balance>>;
 
     }
@@ -67,18 +67,18 @@ decl_module! {
             if !chunk_exists {
                 if new_price < <T::Balance as As<u64>>::sa(DEFAULT_PRICE) {
                     return Err("Too low price for an empty chunk intialization")
-                } 
+                }
                 Self::init_chunk(chunk_x, chunk_y)?;
             } else {
                 // Self::pay_to_previous_owner()?;
                 let prev_chunk = <Chunks<T>>::get((chunk_x, chunk_y));
                 let prev_pixel = &prev_chunk[index as usize];
-                let prev_owner = <PixelOwner<T>>::get((x,y)); 
+                let prev_owner = <PixelOwner<T>>::get((x,y));
 
                 // If pixel had an owner we are going to return all the funds back to him and remove ownership
                 if let Some(owner) = prev_owner {
                     <balances::Module<T> as Currency<_>>::transfer(&sender, &owner, prev_pixel.price)?;
-                    
+
                     let prev_owner_pixel_count = Self::owned_pixel_count(&owner);
                     let new_pixel_count = prev_owner_pixel_count.checked_sub(1).ok_or("Overflow removing old pixel from user")?;
                     <OwnedPixelArray<T>>::remove((owner.clone(), new_pixel_count));
@@ -93,7 +93,7 @@ decl_module! {
             <OwnedPixelArray<T>>::insert((sender.clone(), owned_pixel_count), (x,y));
             <OwnedPixelCount<T>>::insert(&sender, new_owned_pixel_count);
             <PixelOwner<T>>::insert((x,y), &sender); //will change overwrite previous owner if exists
- 
+
             let new_pixel = Pixel {
                 price: new_price,
                 color
@@ -109,7 +109,7 @@ decl_module! {
             Ok(())
         }
 
-        /// Initialize method for root to create empty field of specified size 
+        /// Initialize method for root to create empty field of specified size
         /// TODO remove origin
         pub fn initialize_field(origin, field_size: i32) -> Result {
             let empty = Pixel {
@@ -128,7 +128,7 @@ decl_module! {
         // fn obtain_region(x1: u16, y1: u16, x2: u16, y2: u16) -> Result<Color, &'static str> {
         //     Ok([1,2,3])
         // }
-    
+
     }
 }
 
@@ -136,9 +136,9 @@ impl<T: Trait> Module<T> {
     fn init_chunk(x: i32, y: i32) -> Result {
         let empty_pixel = Pixel {
             price: <T::Balance as As<u64>>::sa(1), //minimum price
-            color: [255, 255, 255], //white
+            color: [255, 255, 255],                //white
         };
-        <Chunks<T>>::insert((x,y), vec![empty_pixel.clone(); CHUNK_SIDE * CHUNK_SIDE]);
+        <Chunks<T>>::insert((x, y), vec![empty_pixel.clone(); CHUNK_SIDE * CHUNK_SIDE]);
         Ok(())
     }
 }
@@ -163,14 +163,14 @@ mod tests {
     use super::*;
 
     // Import a bunch of dependencies from substrate core. All needed for some parts of the code.
-    use support::{impl_outer_origin, assert_ok};
+    use primitives::{Blake2Hasher, H256};
     use runtime_io::{with_externalities, TestExternalities};
-    use primitives::{H256, Blake2Hasher};
     use runtime_primitives::{
-        BuildStorage,
+        testing::{Digest, DigestItem, Header},
         traits::{BlakeTwo256, IdentityLookup},
-        testing::{Digest, DigestItem, Header}
+        BuildStorage,
     };
+    use support::{assert_ok, impl_outer_origin};
 
     impl_outer_origin! {
         pub enum Origin for PlaceTest {}
@@ -210,11 +210,19 @@ mod tests {
     type Place = super::Module<PlaceTest>;
 
     fn build_ext() -> TestExternalities<Blake2Hasher> {
-        let mut t = system::GenesisConfig::<PlaceTest>::default().build_storage().unwrap().0;
-        t.extend(balances::GenesisConfig::<PlaceTest>{
-            balances: vec![(1, 10), (2, 20), (3, 30), (4, 40), (5, 50), (6, 60)],
-            ..Default::default()
-        }.build_storage().unwrap().0);
+        let mut t = system::GenesisConfig::<PlaceTest>::default()
+            .build_storage()
+            .unwrap()
+            .0;
+        t.extend(
+            balances::GenesisConfig::<PlaceTest> {
+                balances: vec![(1, 10), (2, 20), (3, 30), (4, 40), (5, 50), (6, 60)],
+                ..Default::default()
+            }
+            .build_storage()
+            .unwrap()
+            .0,
+        );
         t.into()
     }
 
@@ -222,7 +230,13 @@ mod tests {
     fn purchase_pixel_should_work() {
         with_externalities(&mut build_ext(), || {
             // let prive = <PlaceTest::Balance as As<u64>>::sa(3);
-            assert_ok!(Place::purchase_pixel(Origin::signed(10), 0, 0, [1,2,3], 3));
+            assert_ok!(Place::purchase_pixel(
+                Origin::signed(10),
+                0,
+                0,
+                [1, 2, 3],
+                3
+            ));
 
             let chunk = Place::chunks((0, 0));
             assert_eq!(chunk[0].price, 3);
@@ -233,7 +247,13 @@ mod tests {
     fn purchase_negative_chunk_should_work() {
         with_externalities(&mut build_ext(), || {
             // let prive = <PlaceTest::Balance as As<u64>>::sa(3);
-            assert_ok!(Place::purchase_pixel(Origin::signed(10), -1, -1, [1,2,3], 3));
+            assert_ok!(Place::purchase_pixel(
+                Origin::signed(10),
+                -1,
+                -1,
+                [1, 2, 3],
+                3
+            ));
 
             let chunk = Place::chunks((-1, -1));
             assert_eq!(chunk[63].price, 3);
@@ -244,7 +264,7 @@ mod tests {
     fn init_negative_chunk_should_work() {
         with_externalities(&mut build_ext(), || {
             // let prive = <PlaceTest::Balance as As<u64>>::sa(3);
-            assert_ok!(Place::init_chunk(-1,-1));
+            assert_ok!(Place::init_chunk(-1, -1));
 
             let chunk = Place::chunks((-1, -1));
             assert!(!chunk.is_empty());
@@ -253,21 +273,26 @@ mod tests {
         })
     }
 
-
     #[test]
     fn owner_can_transfer() {
         with_externalities(&mut build_ext(), || {
             // create a kitty with account #10.
-            assert_ok!(Place::purchase_pixel(Origin::signed(10), 1, 1, [1,2,3], 1));
-            assert_eq!(Place::owner_of((1,1)), Some(10));
+            assert_ok!(Place::purchase_pixel(
+                Origin::signed(10),
+                1,
+                1,
+                [1, 2, 3],
+                1
+            ));
+            assert_eq!(Place::owner_of((1, 1)), Some(10));
             assert_eq!(Place::owned_pixel_count(5), 0);
             assert_eq!(Place::owned_pixel_count(10), 1);
             // first pixel of 10th user is at (1,1)
-            assert_eq!(Place::pixel_of_owner_by_index((10,0)), (1,1));
+            assert_eq!(Place::pixel_of_owner_by_index((10, 0)), (1, 1));
 
             // another user purchases the same pixel
-            assert_ok!(Place::purchase_pixel(Origin::signed(5), 1, 1, [1,2,3], 2));
-            assert_eq!(Place::owner_of((1,1)), Some(5));
+            assert_ok!(Place::purchase_pixel(Origin::signed(5), 1, 1, [1, 2, 3], 2));
+            assert_eq!(Place::owner_of((1, 1)), Some(5));
             assert_eq!(Place::owned_pixel_count(5), 1);
             assert_eq!(Place::owned_pixel_count(10), 0);
         })
@@ -281,7 +306,7 @@ mod tests {
         assert_eq!(from_absolute(1, 1), ((0, 0), 9));
         assert_eq!(from_absolute(0, 2), ((0, 0), 16));
     }
-    
+
     #[test]
     fn chunk_convertsion_from_absolute() {
         assert_eq!(from_absolute(0, 0), ((0, 0), 0));
@@ -295,5 +320,4 @@ mod tests {
         assert_eq!(from_absolute(-8, -8), ((-1, -1), 0));
         assert_eq!(from_absolute(-9, -9), ((-2, -2), 63));
     }
-    
 }
