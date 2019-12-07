@@ -4,7 +4,7 @@ use runtime_primitives::traits::As;
 use runtime_io::print;
 use support::{
     decl_event, decl_module, decl_storage, dispatch::Result, StorageMap,
-    StorageValue,
+    StorageValue, traits::Currency
 };
 use system::ensure_signed;
 // use substrate_primitives::U256;
@@ -12,6 +12,7 @@ use parity_codec::{Decode, Encode};
 // use runtime_io::with_storage;
 
 const CHUNK_SIDE: usize = 8;
+const DEFAULT_PRICE: u64 = 1;
 
 type Color = [u8; 3];
 
@@ -62,26 +63,42 @@ decl_module! {
             let ((chunk_x, chunk_y), index) = from_absolute(x,y);
             print("From absolute");
 
-
-            if !<Chunks<T>>::exists((chunk_x, chunk_y)) {
+            let chunk_exists = <Chunks<T>>::exists((chunk_x, chunk_y));
+            if !chunk_exists {
+                if new_price < <T::Balance as As<u64>>::sa(DEFAULT_PRICE) {
+                    return Err("Too low price for an empty chunk intialization")
+                } 
                 Self::init_chunk(chunk_x, chunk_y)?;
+            } else {
+                // Self::pay_to_previous_owner()?;
+                let prev_chunk = <Chunks<T>>::get((chunk_x, chunk_y));
+                let prev_pixel = &prev_chunk[index as usize];
+                let prev_owner = <PixelOwner<T>>::get((x,y)); 
+
+                // If pixel had an owner we are going to return all the funds back to him and remove ownership
+                if let Some(owner) = prev_owner {
+                    <balances::Module<T> as Currency<_>>::transfer(&sender, &owner, prev_pixel.price)?;
+                    
+                    let prev_owner_pixel_count = Self::owned_pixel_count(&owner);
+                    let new_pixel_count = prev_owner_pixel_count.checked_sub(1).ok_or("Overflow removing old pixel from user")?;
+                    <OwnedPixelArray<T>>::remove((owner.clone(), new_pixel_count));
+                    <OwnedPixelCount<T>>::insert(&owner, new_pixel_count);
+                }
             }
 
-            print("Index");
-            print(index as u64);
-            
+
             let owned_pixel_count = Self::owned_pixel_count(&sender);
             let new_owned_pixel_count = owned_pixel_count.checked_add(1).ok_or("Overflow buying new pixel for user")?;
 
             <OwnedPixelArray<T>>::insert((sender.clone(), owned_pixel_count), (x,y));
             <OwnedPixelCount<T>>::insert(&sender, new_owned_pixel_count);
-            <PixelOwner<T>>::insert((x,y), &sender);
-
-            //TODO price check
+            <PixelOwner<T>>::insert((x,y), &sender); //will change overwrite previous owner if exists
+ 
             let new_pixel = Pixel {
                 price: new_price,
                 color
             };
+
             print("new pixel");
             <Chunks<T>>::mutate((chunk_x, chunk_y), |chunk| chunk[index as usize] = new_pixel);
             print("mutation complete");
@@ -194,7 +211,10 @@ mod tests {
 
     fn build_ext() -> TestExternalities<Blake2Hasher> {
         let mut t = system::GenesisConfig::<PlaceTest>::default().build_storage().unwrap().0;
-        t.extend(balances::GenesisConfig::<PlaceTest>::default().build_storage().unwrap().0);
+        t.extend(balances::GenesisConfig::<PlaceTest>{
+            balances: vec![(1, 10), (2, 20), (3, 30), (4, 40), (5, 50), (6, 60)],
+            ..Default::default()
+        }.build_storage().unwrap().0);
         t.into()
     }
 
@@ -230,6 +250,26 @@ mod tests {
             assert!(!chunk.is_empty());
 
             assert_eq!(chunk[0].price, 1);
+        })
+    }
+
+
+    #[test]
+    fn owner_can_transfer() {
+        with_externalities(&mut build_ext(), || {
+            // create a kitty with account #10.
+            assert_ok!(Place::purchase_pixel(Origin::signed(10), 1, 1, [1,2,3], 1));
+            assert_eq!(Place::owner_of((1,1)), Some(10));
+            assert_eq!(Place::owned_pixel_count(5), 0);
+            assert_eq!(Place::owned_pixel_count(10), 1);
+            // first pixel of 10th user is at (1,1)
+            assert_eq!(Place::pixel_of_owner_by_index((10,0)), (1,1));
+
+            // another user purchases the same pixel
+            assert_ok!(Place::purchase_pixel(Origin::signed(5), 1, 1, [1,2,3], 2));
+            assert_eq!(Place::owner_of((1,1)), Some(5));
+            assert_eq!(Place::owned_pixel_count(5), 1);
+            assert_eq!(Place::owned_pixel_count(10), 0);
         })
     }
 
