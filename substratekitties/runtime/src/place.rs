@@ -268,32 +268,29 @@ mod tests {
     }
     
     #[test]
-    fn owner_can_transfer() {
+    fn ownership_transfer_should_work() {
         with_externalities(&mut build_ext(), || {
+            // check no one owns the pixel
             assert_eq!(Place::owner_of((1, 1)), None);
-            assert_ok!(Place::purchase_pixel(
-                Origin::signed(1),
-                1,
-                1,
-                [1, 2, 3],
-                1
-            ));
+            // user purchases it
+            assert_ok!(Place::purchase_pixel( Origin::signed(1), 1, 1, [1, 2, 3], 1));
+            // check user is owner now
             assert_eq!(Place::owner_of((1, 1)), Some(1));
-            assert_eq!(Place::owned_pixel_count(5), 0);
             assert_eq!(Place::owned_pixel_count(1), 1);
             // first pixel of 10th user is at (1,1)
             assert_eq!(Place::pixel_of_owner_by_index((1, 0)), (1, 1));
 
+            //check that another user isn't owning anything
+            assert_eq!(Place::owned_pixel_count(5), 0);
+
             // another user purchases the same pixel
             assert_ok!(Place::purchase_pixel(Origin::signed(5), 1, 1, [1, 2, 3], 2));
+            // check another user is owner now
             assert_eq!(Place::owner_of((1, 1)), Some(5));
             assert_eq!(Place::owned_pixel_count(5), 1);
+            assert_eq!(Place::pixel_of_owner_by_index((5, 0)), (1, 1));
+            // check that first user isn't owning anything now
             assert_eq!(Place::owned_pixel_count(1), 0);
-            // check that previous owner have received its funds back
-            assert_eq!(Balances::free_balance(1), 10);
-
-
-            println!("sudo balance {}", Balances::free_balance(Sudo::key()));
         })
     }
 
