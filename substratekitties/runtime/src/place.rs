@@ -23,7 +23,7 @@ pub struct Pixel<Balance> {
     color: Color, //rgb
 }
 
-pub trait Trait: balances::Trait {
+pub trait Trait: balances::Trait + sudo::Trait {
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 }
 
@@ -65,25 +65,28 @@ decl_module! {
 
             let chunk_exists = <Chunks<T>>::exists((chunk_x, chunk_y));
             if !chunk_exists {
-                if new_price < <T::Balance as As<u64>>::sa(DEFAULT_PRICE) {
+                let default_price = <T::Balance as As<u64>>::sa(DEFAULT_PRICE);
+                if new_price < default_price {
                     return Err("Too low price for an empty chunk intialization")
                 }
+                let sudo_user = <sudo::Module<T>>::key();
+                print("sending to sudo");
+                <balances::Module<T> as Currency<_>>::transfer(&sender, &sudo_user, default_price)?;
+
+                print("Init chunk");
                 Self::init_chunk(chunk_x, chunk_y)?;
             } else {
-                // Self::pay_to_previous_owner()?;
                 let prev_chunk = <Chunks<T>>::get((chunk_x, chunk_y));
                 let prev_pixel = &prev_chunk[index as usize];
-                let prev_owner = <PixelOwner<T>>::get((x,y));
+                let prev_owner = Self::owner_of((x,y)).ok_or("Pixel don't have and owner")?;
 
                 // If pixel had an owner we are going to return all the funds back to him and remove ownership
-                if let Some(owner) = prev_owner {
-                    <balances::Module<T> as Currency<_>>::transfer(&sender, &owner, prev_pixel.price)?;
+                <balances::Module<T> as Currency<_>>::transfer(&sender, &prev_owner, prev_pixel.price)?;
 
-                    let prev_owner_pixel_count = Self::owned_pixel_count(&owner);
+                let prev_owner_pixel_count = Self::owned_pixel_count(&prev_owner);
                     let new_pixel_count = prev_owner_pixel_count.checked_sub(1).ok_or("Overflow removing old pixel from user")?;
-                    <OwnedPixelArray<T>>::remove((owner.clone(), new_pixel_count));
-                    <OwnedPixelCount<T>>::insert(&owner, new_pixel_count);
-                }
+                <OwnedPixelArray<T>>::remove((prev_owner.clone(), new_pixel_count));
+                <OwnedPixelCount<T>>::insert(&prev_owner, new_pixel_count);
             }
 
 
@@ -108,34 +111,13 @@ decl_module! {
 
             Ok(())
         }
-
-        /// Initialize method for root to create empty field of specified size
-        /// TODO remove origin
-        pub fn initialize_field(origin, field_size: i32) -> Result {
-            let empty = Pixel {
-                price: <T::Balance as As<u64>>::sa(1),
-                color: [255,255,255]
-            };
-            for i in 0..field_size {
-                for j in 0..field_size {
-                    let chunk = vec![empty.clone(); CHUNK_SIDE*CHUNK_SIDE];
-                    <Chunks<T>>::insert((i,j), chunk);
-                }
             }
-            Ok(())
         }
-
-        // fn obtain_region(x1: u16, y1: u16, x2: u16, y2: u16) -> Result<Color, &'static str> {
-        //     Ok([1,2,3])
-        // }
-
-    }
-}
 
 impl<T: Trait> Module<T> {
     fn init_chunk(x: i32, y: i32) -> Result {
         let empty_pixel = Pixel {
-            price: <T::Balance as As<u64>>::sa(1), //minimum price
+            price: <T::Balance as As<u64>>::sa(DEFAULT_PRICE), //minimum price
             color: [255, 255, 255],                //white
         };
         <Chunks<T>>::insert((x, y), vec![empty_pixel.clone(); CHUNK_SIDE * CHUNK_SIDE]);
@@ -170,10 +152,16 @@ mod tests {
         traits::{BlakeTwo256, IdentityLookup},
         BuildStorage,
     };
-    use support::{assert_ok, impl_outer_origin};
+    use support::{assert_ok, impl_outer_origin, impl_outer_dispatch};
 
     impl_outer_origin! {
         pub enum Origin for PlaceTest {}
+    }
+
+    impl_outer_dispatch! {
+        pub enum Call for PlaceTest where origin: Origin {
+            balances::Balances,
+        }
     }
 
     #[derive(Clone, Eq, PartialEq)]
@@ -203,11 +191,18 @@ mod tests {
         type DustRemoval = ();
     }
 
+    impl sudo::Trait for PlaceTest {
+        type Proposal = Call;
+        type Event = ();
+    }
+
     impl super::Trait for PlaceTest {
         type Event = ();
     }
 
     type Place = super::Module<PlaceTest>;
+    type Balances = balances::Module<PlaceTest>;
+    type Sudo = sudo::Module<PlaceTest>;
 
     fn build_ext() -> TestExternalities<Blake2Hasher> {
         let mut t = system::GenesisConfig::<PlaceTest>::default()
@@ -229,7 +224,6 @@ mod tests {
     #[test]
     fn purchase_pixel_should_work() {
         with_externalities(&mut build_ext(), || {
-            // let prive = <PlaceTest::Balance as As<u64>>::sa(3);
             assert_ok!(Place::purchase_pixel(
                 Origin::signed(10),
                 0,
@@ -246,7 +240,6 @@ mod tests {
     #[test]
     fn purchase_negative_chunk_should_work() {
         with_externalities(&mut build_ext(), || {
-            // let prive = <PlaceTest::Balance as As<u64>>::sa(3);
             assert_ok!(Place::purchase_pixel(
                 Origin::signed(10),
                 -1,
@@ -263,7 +256,6 @@ mod tests {
     #[test]
     fn init_negative_chunk_should_work() {
         with_externalities(&mut build_ext(), || {
-            // let prive = <PlaceTest::Balance as As<u64>>::sa(3);
             assert_ok!(Place::init_chunk(-1, -1));
 
             let chunk = Place::chunks((-1, -1));
@@ -277,24 +269,33 @@ mod tests {
     fn owner_can_transfer() {
         with_externalities(&mut build_ext(), || {
             // create a kitty with account #10.
+            assert_eq!(Place::owner_of((1, 1)), None);
             assert_ok!(Place::purchase_pixel(
-                Origin::signed(10),
+                Origin::signed(1),
                 1,
                 1,
                 [1, 2, 3],
                 1
             ));
-            assert_eq!(Place::owner_of((1, 1)), Some(10));
+            assert_eq!(Place::owner_of((1, 1)), Some(1));
             assert_eq!(Place::owned_pixel_count(5), 0);
-            assert_eq!(Place::owned_pixel_count(10), 1);
+            assert_eq!(Place::owned_pixel_count(1), 1);
             // first pixel of 10th user is at (1,1)
-            assert_eq!(Place::pixel_of_owner_by_index((10, 0)), (1, 1));
+            assert_eq!(Place::pixel_of_owner_by_index((1, 0)), (1, 1));
+
+            // check that we received default pixel price
+            assert_eq!(Balances::free_balance(Sudo::key()), 1);
 
             // another user purchases the same pixel
             assert_ok!(Place::purchase_pixel(Origin::signed(5), 1, 1, [1, 2, 3], 2));
             assert_eq!(Place::owner_of((1, 1)), Some(5));
             assert_eq!(Place::owned_pixel_count(5), 1);
-            assert_eq!(Place::owned_pixel_count(10), 0);
+            assert_eq!(Place::owned_pixel_count(1), 0);
+            // check that previous owner have received its funds back
+            assert_eq!(Balances::free_balance(1), 10);
+
+
+            println!("sudo balance {}", Balances::free_balance(Sudo::key()));
         })
     }
 
