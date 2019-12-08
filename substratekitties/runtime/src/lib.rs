@@ -57,7 +57,6 @@ pub type Nonce = u64;
 /// Used for the module template in `./template.rs`
 mod template;
 
-mod substratekitties;
 mod place;
 
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
@@ -94,11 +93,11 @@ pub mod opaque {
 
 /// This runtime version.
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: create_runtime_str!("substratekitties"),
-	impl_name: create_runtime_str!("substratekitties"),
-	authoring_version: 3,
-	spec_version: 4,
-	impl_version: 4,
+	spec_name: create_runtime_str!("place"),
+	impl_name: create_runtime_str!("place"),
+	authoring_version: 1,
+	spec_version: 1,
+	impl_version: 1,
 	apis: RUNTIME_API_VERSIONS,
 };
 
