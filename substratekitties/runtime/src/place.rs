@@ -80,7 +80,7 @@ decl_event!(
 
 decl_storage! {
     trait Store for Module<T: Trait> as PlaceStorage {
-        /// whole field is stored as 8x8 chunks and chunks are stored in i32xi32 map
+        /// whole field is stored as 8x8 chunks and those chunks are stored in i32xi32 map
         /// to store absolute pixel coordinates we would need i36 since there is 8 more coordinates per chunk
         /// but i64 is the closest we have to i36
         OwnedPixelArray get(pixel_of_owner_by_index): map (T::AccountId, u64) => (i64, i64);
@@ -99,69 +99,68 @@ decl_module! {
         fn purchase_pixel(origin, x: i64, y: i64, color: Color, new_price: T::Balance) -> Result {
             let sender = ensure_signed(origin)?;
 
-            print("Before from absolute");
+            //TODO ensure absolute coords limits
             let ((chunk_x, chunk_y), index) = from_absolute(x,y);
-            print("From absolute");
 
             let chunk_exists = <Chunks<T>>::exists((chunk_x, chunk_y));
-            if !chunk_exists {
+            let (old_price, prev_owner) = if !chunk_exists {
                 let default_price = <T::Balance as As<u64>>::sa(DEFAULT_PRICE);
-                if new_price < default_price {
-                    return Err("Too low price for an empty chunk intialization")
-                }
-                let sudo_user = <sudo::Module<T>>::key();
-                print("sending to sudo");
-                <balances::Module<T> as Currency<_>>::transfer(&sender, &sudo_user, new_price)?;
 
-                print("Init chunk");
-                Self::init_chunk(chunk_x, chunk_y)?;
+                (default_price, None)    
             } else {
-                let prev_chunk = <Chunks<T>>::get((chunk_x, chunk_y));
-                let prev_pixel = &prev_chunk[index as usize];
-                let prev_owner = Self::owner_of((x,y)).ok_or("Pixel don't have and owner")?;
+                let chunk = <Chunks<T>>::get((chunk_x, chunk_y));
+                let pixel = &chunk[index as usize];
+                let owner = Self::owner_of((x,y));
 
-                if prev_pixel.price >= new_price {
-                    return Err("New price should be greater than previous");
-                }
-                // If pixel had an owner we are going to return all the funds back to him and remove ownership
-                <balances::Module<T> as Currency<_>>::transfer(&sender, &prev_owner, prev_pixel.price)?;
+                (pixel.price, owner)  
+            };
+            
+            ensure!(new_price > old_price, "Price is too low");
 
+            let refund_recipient = match prev_owner {
+                Some(ref prev_owner) => prev_owner.clone(),
+                None => <sudo::Module<T>>::key()
+            };
+
+            <balances::Module<T> as Currency<_>>::transfer(&sender, &refund_recipient, new_price)?;
+
+            if !chunk_exists {                        
+                Self::init_chunk(chunk_x, chunk_y)?;
+            }
+
+            if let Some(prev_owner) = prev_owner {
                 let prev_owner_pixel_count = Self::owned_pixel_count(&prev_owner);
-                    let new_pixel_count = prev_owner_pixel_count.checked_sub(1).ok_or("Overflow removing old pixel from user")?;
+                let new_pixel_count = prev_owner_pixel_count.checked_sub(1).ok_or("Overflow removing old pixel from user")?;
                 <OwnedPixelArray<T>>::remove((prev_owner.clone(), new_pixel_count));
                 <OwnedPixelCount<T>>::insert(&prev_owner, new_pixel_count);
             }
-
 
             let owned_pixel_count = Self::owned_pixel_count(&sender);
             let new_owned_pixel_count = owned_pixel_count.checked_add(1).ok_or("Overflow buying new pixel for user")?;
 
             <OwnedPixelArray<T>>::insert((sender.clone(), owned_pixel_count), (x,y));
             <OwnedPixelCount<T>>::insert(&sender, new_owned_pixel_count);
-            <PixelOwner<T>>::insert((x,y), &sender); //will change overwrite previous owner if exists
+            <PixelOwner<T>>::insert((x,y), &sender); //will overwrite previous owner if exists
 
             let new_pixel = Pixel {
                 price: new_price,
                 color
             };
 
-            print("new pixel");
             <Chunks<T>>::mutate((chunk_x, chunk_y), |chunk| chunk[index as usize] = new_pixel);
-            print("mutation complete");
-
 
             Self::deposit_event(RawEvent::Bought(sender, x, y, new_price));
 
             Ok(())
         }
-            }
-        }
+    }
+}
 
 impl<T: Trait> Module<T> {
     fn init_chunk(x: i32, y: i32) -> Result {
         let empty_pixel = Pixel {
-            price: <T::Balance as As<u64>>::sa(DEFAULT_PRICE), //minimum price
-            color: [255, 255, 255],                //white
+            price: <T::Balance as As<u64>>::sa(DEFAULT_PRICE),
+            color: [255, 255, 255],                            //white
         };
         <Chunks<T>>::insert((x, y), vec![empty_pixel.clone(); CHUNK_SIDE * CHUNK_SIDE]);
         Ok(())
@@ -187,7 +186,6 @@ fn convert_coord(c: i64) -> (i32, u8) {
 mod tests {
     use super::*;
 
-    // Import a bunch of dependencies from substrate core. All needed for some parts of the code.
     use primitives::{Blake2Hasher, H256};
     use runtime_io::{with_externalities, TestExternalities};
     use runtime_primitives::{
@@ -195,7 +193,7 @@ mod tests {
         traits::{BlakeTwo256, IdentityLookup},
         BuildStorage,
     };
-    use support::{assert_ok, impl_outer_origin, impl_outer_dispatch};
+    use support::{assert_ok, impl_outer_dispatch, impl_outer_origin};
 
     impl_outer_origin! {
         pub enum Origin for PlaceTest {}
@@ -267,13 +265,7 @@ mod tests {
     #[test]
     fn purchase_pixel_should_work() {
         with_externalities(&mut build_ext(), || {
-            assert_ok!(Place::purchase_pixel(
-                Origin::signed(1),
-                0,
-                0,
-                [1, 2, 3],
-                3
-            ));
+            assert_ok!(Place::purchase_pixel(Origin::signed(1), 0, 0, [1, 2, 3], 3));
 
             let chunk = Place::chunks((0, 0));
             assert_eq!(chunk[0].price, 3);
@@ -314,7 +306,7 @@ mod tests {
             // check no one owns the pixel
             assert_eq!(Place::owner_of((1, 1)), None);
             // user purchases it
-            assert_ok!(Place::purchase_pixel( Origin::signed(1), 1, 1, [1, 2, 3], 1));
+            assert_ok!(Place::purchase_pixel(Origin::signed(1), 1, 1, [1, 2, 3], 2));
             // check user is owner now
             assert_eq!(Place::owner_of((1, 1)), Some(1));
             assert_eq!(Place::owned_pixel_count(1), 1);
@@ -325,7 +317,7 @@ mod tests {
             assert_eq!(Place::owned_pixel_count(5), 0);
 
             // another user purchases the same pixel
-            assert_ok!(Place::purchase_pixel(Origin::signed(5), 1, 1, [1, 2, 3], 2));
+            assert_ok!(Place::purchase_pixel(Origin::signed(5), 1, 1, [1, 2, 3], 3));
             // check another user is owner now
             assert_eq!(Place::owner_of((1, 1)), Some(5));
             assert_eq!(Place::owned_pixel_count(5), 1);
@@ -339,12 +331,7 @@ mod tests {
     fn cant_buy_not_enough_funds() {
         with_externalities(&mut build_ext(), || {
             // this fails since 127th user has no money
-            assert!(Place::purchase_pixel(
-                Origin::signed(127),
-                1, 1,
-                [1, 2, 3],
-                1
-            ).is_err());
+            assert!(Place::purchase_pixel(Origin::signed(127), 1, 1, [1, 2, 3], 1).is_err());
         });
     }
     #[test]
@@ -353,13 +340,24 @@ mod tests {
             assert_eq!(Place::owner_of((1, 1)), None);
             assert_ok!(Place::purchase_pixel(
                 Origin::signed(1),
-                1, 1,
+                1,
+                1,
                 [1, 2, 3],
-                10
+                3
             ));
 
-            // check that we received default pixel price
-            assert_eq!(Balances::free_balance(Sudo::key()), 10);
+            // check that we received first payment from uninitialized chunk
+            assert_eq!(Balances::free_balance(Sudo::key()), 3);
+
+            assert_ok!(Place::purchase_pixel(
+                Origin::signed(1),
+                2,
+                2,
+                [1, 2, 3],
+                4
+            ));
+            // check that we received second payment from already initialized chunk
+            assert_eq!(Balances::free_balance(Sudo::key()), 7);
         });
     }
 
@@ -371,7 +369,7 @@ mod tests {
             // another user purchases the same pixel paying more
             assert_ok!(Place::purchase_pixel(Origin::signed(2), 1, 1, [1, 2, 3], 15));
             // first user receives its funds back
-            assert_eq!(Balances::free_balance(1), 10);
+            assert_eq!(Balances::free_balance(1), 15);
         });
     }
     
