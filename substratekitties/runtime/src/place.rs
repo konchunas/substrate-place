@@ -1,17 +1,58 @@
+//! # The Place on Substrate
+//!
+//! The Place module provides functionality for huge pixel board on substrate
+//!
+//! ## Overview
+//!
+//! The place module provides functions for:
+//! - Getting board state
+//! - Purchasing particular pixel
+//!
+//!  ### Terminology
+//!
+//! **Pixel:** single smallest unit of the board. Stores price and color of a dot on a board.
+//! **Chunk:** Matrix of pixels (currently 8x8). Stored in chunks to optimize retreival by user
+//! **Initialized chunk:** Chunk which has been filled with minimal price default color pixels. Happens when any chunk pixel is bought first time.
+//!
+//! ### Storage structure
+//!
+//! Pixel is structure holding color and price. Color is array of 3 one-byte values each one representing color component: red, green and blue.
+//! Every pixel is stored in so-called chunks. Logically chunks are 8x8 pixel matrices. To allow batch retreiving chunks are stored in 64-element Vectors.
+//! Every chunk on map is accessed by (i32, i32) coordinates. These coordinates can be both positive and negative.
+//! This practically means there can be 2^32 * 2^32 chunks. Since every chunk contains 8 pixel per axes it means we can have 2^40 * 2^40 pixel board.
+//!
+//! ### Usage
+//! 
+//! To retreive latest state of the board `chunks` call is used. Pass desired chunk coord as tuple as input argument.
+//! 64-element array will be returned as an output if this chunk was already initialized, otherwise returning empty array
+//! 
+//! When user wants to buy a pixel on the board `purchase_pixel` method should be called.
+//! Its arguments are as follows:
+//!  - x, y - absolute coordinates of the pixel
+//!  - color - three-byte array with RGB coded desired color of a pixel
+//!  - new_price - amount of funds user pays for this pixel
+//! 
+//! ### Dependencies
+//! 
+//! This module is reliant on Sudo module.
+//! It is needed to reward sudo user when 
+
 use rstd::prelude::*;
 
+use parity_codec::{Decode, Encode};
 use runtime_io::print;
 use runtime_primitives::traits::As;
 use support::{
-    decl_event, decl_module, decl_storage, dispatch::Result, traits::Currency, StorageMap,
-    StorageValue,
+    decl_event, decl_module, decl_storage,
+    ensure,
+    dispatch::Result, traits::Currency, StorageMap,
 };
 use system::ensure_signed;
-// use substrate_primitives::U256;
-use parity_codec::{Decode, Encode};
-// use runtime_io::with_storage;
 
+/// Represents how many pixels per axis there are in chunk
 const CHUNK_SIDE: usize = 8;
+
+/// Default price for never purchased before pixel
 const DEFAULT_PRICE: u64 = 1;
 
 type Color = [u8; 3];
