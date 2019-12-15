@@ -55,6 +55,11 @@ const CHUNK_SIDE: usize = 8;
 /// Default price for never purchased before pixel
 const DEFAULT_PRICE: u64 = 1;
 
+//2^31 for chunks in chunks in negative and positive direction
+//2^3 inside chunk per axis
+const MIN_COORD: i64 = -1 << 34; //2^31 + 2^3
+const MAX_COORD: i64 = (1 << 34) - 1; //2^31 + 2^3
+
 type Color = [u8; 3];
 
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
@@ -98,6 +103,9 @@ decl_module! {
 
         fn purchase_pixel(origin, x: i64, y: i64, color: Color, new_price: T::Balance) -> Result {
             let sender = ensure_signed(origin)?;
+
+            ensure!(MIN_COORD <= x && x <= MAX_COORD, "X is out of bounds");
+            ensure!(MIN_COORD <= y && y <= MAX_COORD, "Y is out of bounds");
 
             //TODO ensure absolute coords limits
             let ((chunk_x, chunk_y), index) = from_absolute(x,y);
@@ -404,6 +412,31 @@ mod tests {
             // same user succeeds buying with greater price
             assert_ok!(Place::purchase_pixel(Origin::signed(1), 1, 1, [1, 2, 3], 4));
         });
+    }
+
+    #[test]
+    fn can_purchase_last_pixel() {
+        with_externalities(&mut build_ext(), || {
+        
+            assert_ok!(Place::purchase_pixel(Origin::signed(1), MAX_COORD, MAX_COORD, [1, 2, 3], 3));
+            assert_ok!(Place::purchase_pixel(Origin::signed(1), MIN_COORD, MIN_COORD, [1, 2, 3], 6));
+            
+            let min_chunk_coord = std::i32::MIN;
+            let max_chunk_coord = std::i32::MAX;
+            
+            let max_chunk = Place::chunks((max_chunk_coord, max_chunk_coord));
+            let min_chunk = Place::chunks((min_chunk_coord, min_chunk_coord));
+            assert_eq!(max_chunk[63].price, 3);
+            assert_eq!(min_chunk[0].price, 6);
+        });
+    }
+
+    #[test]
+    fn max_coords_convert() {
+        let min_chunk = std::i32::MIN;
+        let max_chunk = std::i32::MAX;
+        assert_eq!(from_absolute(MAX_COORD, MAX_COORD), ((max_chunk, max_chunk), 63));
+        assert_eq!(from_absolute(MIN_COORD, MIN_COORD), ((min_chunk, min_chunk), 0));
     }
 
     #[test]
