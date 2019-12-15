@@ -174,6 +174,14 @@ decl_module! {
 
             Ok(())
         }
+
+        fn use_faucet(origin) {
+            //TODO limit to testnet-only
+            let receiver = ensure_signed(origin)?;
+            let amount = <T::Balance as As<u64>>::sa(1000);
+            let superuser = <sudo::Module<T>>::key();
+            <balances::Module<T> as Currency<_>>::transfer(&superuser, &receiver, amount)?;   
+        }
     }
 }
 
