@@ -401,7 +401,7 @@ mod tests {
         });
     }
     #[test]
-    fn user_buys_from_himself() {
+    fn user_can_buy_from_himself() {
         with_externalities(&mut build_ext(), || {
             //user purchases pixel
             assert_ok!(Place::purchase_pixel(Origin::signed(1), 1, 1, [1, 2, 3], 3));
@@ -428,6 +428,14 @@ mod tests {
             let min_chunk = Place::chunks((min_chunk_coord, min_chunk_coord));
             assert_eq!(max_chunk[63].price, 3);
             assert_eq!(min_chunk[0].price, 6);
+        });
+    }
+
+    #[test]
+    fn purchase_off_limits_should_fail() {
+        with_externalities(&mut build_ext(), || {
+            assert!(Place::purchase_pixel(Origin::signed(1), MAX_COORD + 1, MAX_COORD + 1, [1, 2, 3], 3).is_err());
+            assert!(Place::purchase_pixel(Origin::signed(1), MIN_COORD - 1, MIN_COORD - 1, [1, 2, 3], 6).is_err());
         });
     }
 
