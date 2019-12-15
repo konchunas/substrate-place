@@ -114,6 +114,11 @@ decl_module! {
 
         fn deposit_event<T>() = default;
 
+        /// Method to purchase specific pixel on the grid. Pixel is specified using `x` and `y` using absolute coordinates.
+        /// `color` is RGB 3-byte array. `price` is of Balance type.
+        /// Price should be neccessary larger than previous price.
+        /// Chunk coords of the pixel are calculated automatically.
+        /// Caclculated chunk will be initialized if no pixel was ever bought on it.
         fn purchase_pixel(origin, x: i64, y: i64, color: Color, new_price: T::Balance) -> Result {
             let sender = ensure_signed(origin)?;
 
@@ -121,7 +126,7 @@ decl_module! {
             ensure!(MIN_COORD <= y && y <= MAX_COORD, "Y is out of bounds");
 
             //TODO ensure absolute coords limits
-            let ((chunk_x, chunk_y), index) = from_absolute(x,y);
+            let ((chunk_x, chunk_y), pixel_index) = from_absolute(x,y);
 
             let chunk_exists = <Chunks<T>>::exists((chunk_x, chunk_y));
             let (old_price, prev_owner) = if !chunk_exists {
@@ -130,7 +135,7 @@ decl_module! {
                 (default_price, None)    
             } else {
                 let chunk = <Chunks<T>>::get((chunk_x, chunk_y));
-                let pixel = &chunk[index as usize];
+                let pixel = &chunk[pixel_index as usize];
                 let owner = Self::owner_of((x,y));
 
                 (pixel.price, owner)  
@@ -143,32 +148,20 @@ decl_module! {
                 None => <sudo::Module<T>>::key()
             };
 
+            Self::transfer_ownership(x, y, prev_owner, sender.clone())?;
+
             <balances::Module<T> as Currency<_>>::transfer(&sender, &refund_recipient, new_price)?;
 
             if !chunk_exists {                        
                 Self::init_chunk(chunk_x, chunk_y)?;
             }
 
-            if let Some(prev_owner) = prev_owner {
-                let prev_owner_pixel_count = Self::owned_pixel_count(&prev_owner);
-                let new_pixel_count = prev_owner_pixel_count.checked_sub(1).ok_or("Overflow removing old pixel from user")?;
-                <OwnedPixelArray<T>>::remove((prev_owner.clone(), new_pixel_count));
-                <OwnedPixelCount<T>>::insert(&prev_owner, new_pixel_count);
-            }
-
-            let owned_pixel_count = Self::owned_pixel_count(&sender);
-            let new_owned_pixel_count = owned_pixel_count.checked_add(1).ok_or("Overflow buying new pixel for user")?;
-
-            <OwnedPixelArray<T>>::insert((sender.clone(), owned_pixel_count), (x,y));
-            <OwnedPixelCount<T>>::insert(&sender, new_owned_pixel_count);
-            <PixelOwner<T>>::insert((x,y), &sender); //will overwrite previous owner if exists
-
             let new_pixel = Pixel {
                 price: new_price,
                 color
             };
 
-            <Chunks<T>>::mutate((chunk_x, chunk_y), |chunk| chunk[index as usize] = new_pixel);
+            <Chunks<T>>::mutate((chunk_x, chunk_y), |chunk| chunk[pixel_index as usize] = new_pixel);
 
             Self::deposit_event(RawEvent::Bought(sender, x, y, new_price));
 
@@ -186,12 +179,30 @@ decl_module! {
 }
 
 impl<T: Trait> Module<T> {
+    ///  Initialize chunk at specific coordinates and set all of its pixels to be white color and of `DEFAULT_PRICE`
     fn init_chunk(x: i32, y: i32) -> Result {
         let empty_pixel = Pixel {
             price: <T::Balance as As<u64>>::sa(DEFAULT_PRICE),
             color: [255, 255, 255],                            //white
         };
         <Chunks<T>>::insert((x, y), vec![empty_pixel.clone(); CHUNK_SIDE * CHUNK_SIDE]);
+        Ok(())
+    }
+
+    fn transfer_ownership(x: i64, y: i64, prev_owner: Option<T::AccountId>, new_owner: T::AccountId) -> Result {
+        if let Some(prev_owner) = prev_owner {
+            let prev_owner_pixel_count = Self::owned_pixel_count(&prev_owner);
+            let new_pixel_count = prev_owner_pixel_count.checked_sub(1).ok_or("Overflow removing old pixel from user")?;
+            <OwnedPixelArray<T>>::remove((prev_owner.clone(), new_pixel_count));
+            <OwnedPixelCount<T>>::insert(&prev_owner, new_pixel_count);
+        }
+
+        let owned_pixel_count = Self::owned_pixel_count(&new_owner);
+        let new_owned_pixel_count = owned_pixel_count.checked_add(1).ok_or("Overflow buying new pixel for user")?;
+
+        <OwnedPixelArray<T>>::insert((new_owner.clone(), owned_pixel_count), (x,y));
+        <OwnedPixelCount<T>>::insert(&new_owner, new_owned_pixel_count);
+        <PixelOwner<T>>::insert((x,y), &new_owner); //will overwrite previous owner if exists
         Ok(())
     }
 }
