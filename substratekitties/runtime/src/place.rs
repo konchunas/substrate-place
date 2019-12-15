@@ -125,13 +125,13 @@ decl_module! {
             ensure!(MIN_COORD <= x && x <= MAX_COORD, "X is out of bounds");
             ensure!(MIN_COORD <= y && y <= MAX_COORD, "Y is out of bounds");
 
-            //TODO ensure absolute coords limits
+            /// convert pixel to chunk coordinates
             let ((chunk_x, chunk_y), pixel_index) = from_absolute(x,y);
 
+            /// extract pixel previous owner and price
             let chunk_exists = <Chunks<T>>::exists((chunk_x, chunk_y));
             let (old_price, prev_owner) = if !chunk_exists {
                 let default_price = <T::Balance as As<u64>>::sa(DEFAULT_PRICE);
-
                 (default_price, None)    
             } else {
                 let chunk = <Chunks<T>>::get((chunk_x, chunk_y));
@@ -143,6 +143,7 @@ decl_module! {
             
             ensure!(new_price > old_price, "Price is too low");
 
+            /// if there were no owner of this pixel it means Sudo user is eligible for payment
             let refund_recipient = match prev_owner {
                 Some(ref prev_owner) => prev_owner.clone(),
                 None => <sudo::Module<T>>::key()
@@ -150,9 +151,11 @@ decl_module! {
 
             Self::transfer_ownership(x, y, prev_owner, sender.clone())?;
 
+            //it should be safe to mutate storage from now on
+
             <balances::Module<T> as Currency<_>>::transfer(&sender, &refund_recipient, new_price)?;
 
-            if !chunk_exists {                        
+            if !chunk_exists { 
                 Self::init_chunk(chunk_x, chunk_y)?;
             }
 
@@ -161,6 +164,7 @@ decl_module! {
                 color
             };
 
+            /// mutate single value in vector of pixels in calculated pixel index inside chunk vector
             <Chunks<T>>::mutate((chunk_x, chunk_y), |chunk| chunk[pixel_index as usize] = new_pixel);
 
             Self::deposit_event(RawEvent::Bought(sender, x, y, new_price));
@@ -168,6 +172,8 @@ decl_module! {
             Ok(())
         }
 
+        /// Testnet only method emulating faucet behaviour
+        /// Since Sudo user has all the funds we can grant somet to people for testing purposes
         fn use_faucet(origin) {
             //TODO limit to testnet-only
             let receiver = ensure_signed(origin)?;
@@ -189,6 +195,8 @@ impl<T: Trait> Module<T> {
         Ok(())
     }
 
+    /// Transfer pixel ownership from previous to new owner
+    /// Removes pixel from owned pixels array and decreases owned pixels count
     fn transfer_ownership(x: i64, y: i64, prev_owner: Option<T::AccountId>, new_owner: T::AccountId) -> Result {
         if let Some(prev_owner) = prev_owner {
             let prev_owner_pixel_count = Self::owned_pixel_count(&prev_owner);
@@ -202,20 +210,25 @@ impl<T: Trait> Module<T> {
 
         <OwnedPixelArray<T>>::insert((new_owner.clone(), owned_pixel_count), (x,y));
         <OwnedPixelCount<T>>::insert(&new_owner, new_owned_pixel_count);
-        <PixelOwner<T>>::insert((x,y), &new_owner); //will overwrite previous owner if exists
+        <PixelOwner<T>>::insert((x,y), &new_owner); // will overwrite previous owner if exists
         Ok(())
     }
 }
 
+/// Convert absolute pixel coordinates to chunk coordinates and pixel index inside that chunk
+/// Returns tuple containing nested tuple with chunk `x` and `y` coordinates and index of a pixel
 fn from_absolute(x: i64, y: i64) -> ((i32, i32), u8) {
     let (chunk_x, local_x) = convert_coord(x);
     let (chunk_y, local_y) = convert_coord(y);
 
+    // convert pixel coordinate from virtual 8x8 matrix to vector index
     let index = local_x as u8 + local_y as u8 * CHUNK_SIDE as u8;
 
     ((chunk_x, chunk_y), index)
 }
 
+// Convert singular axis coordinate from absolute to chunk
+// Returns tuple of chunk coordinate and pixel coordinate on virtual 8x8 Matrix
 fn convert_coord(c: i64) -> (i32, u8) {
     let chunk = c.div_euclid(CHUNK_SIDE as i64);
     let local = c.rem_euclid(CHUNK_SIDE as i64);
