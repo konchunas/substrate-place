@@ -1,6 +1,6 @@
 //! # The Place on Substrate
 //!
-//! The Place module provides functionality for huge pixel board on substrate
+//! The Place module provides functionality for huge pixel drawing board on Substrate
 //!
 //! ## Overview
 //!
@@ -13,13 +13,15 @@
 //! **Pixel:** single smallest unit of the board. Stores price and color of a dot on a board.
 //! **Chunk:** Matrix of pixels (currently 8x8). Stored in chunks to optimize retreival by user
 //! **Initialized chunk:** Chunk which has been filled with minimal price default color pixels. Happens when any chunk pixel is bought first time.
+//! **Absolute** or **Pixel coordinates** Coordinates on the grid without any relation to chunk whatsoever. Plain pixel address.
+//! **Chunk coordinates** First coordinate of 8x8 pixel group
 //!
 //! ### Storage structure
 //!
 //! Pixel is structure holding color and price. Color is array of 3 one-byte values each one representing color component: red, green and blue.
 //! Every pixel is stored in so-called chunks. Logically chunks are 8x8 pixel matrices. To allow batch retreiving chunks are stored in 64-element Vectors.
 //! Every chunk on map is accessed by (i32, i32) coordinates. These coordinates can be both positive and negative.
-//! This practically means there can be 2^32 * 2^32 chunks. Since every chunk contains 8 pixel per axes it means we can have 2^40 * 2^40 pixel board.
+//! This practically means there can be 2^32 * 2^32 chunks. Since every chunk contains 8 pixel per axes it means we can have to contain 2^3 more pixels per chunk resulting in 2^35 * 2^35 pixel board.
 //!
 //! ### Usage
 //! 
@@ -35,7 +37,7 @@
 //! ### Dependencies
 //! 
 //! This module is reliant on Sudo module.
-//! It is needed to reward sudo user when 
+//! It is needed to reward sudo user when first pixel in a chunk is bought.
 
 use rstd::prelude::*;
 
@@ -60,8 +62,11 @@ const DEFAULT_PRICE: u64 = 1;
 const MIN_COORD: i64 = -1 << 34; //2^31 + 2^3
 const MAX_COORD: i64 = (1 << 34) - 1; //2^31 + 2^3
 
+/// Represents RGB values. 3 channels 1 byte per color
 type Color = [u8; 3];
 
+
+/// Basic element of the grid, stored as Color and Price
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct Pixel<Balance> {
@@ -79,19 +84,27 @@ decl_event!(
         <T as system::Trait>::AccountId,
         <T as balances::Trait>::Balance
     {
+        //Emitted when new pixel is bought to show who bought it and what was the price
         Bought(AccountId, i64, i64, Balance),
     }
 );
 
+
 decl_storage! {
     trait Store for Module<T: Trait> as PlaceStorage {
-        /// whole field is stored as 8x8 chunks and those chunks are stored in i32xi32 map
-        /// to store absolute pixel coordinates we would need i36 since there is 8 more coordinates per chunk
-        /// but i64 is the closest we have to i36
+
+        /// Whole field is stored as 8x8 chunks and those chunks are stored in i32xi32 map
+        /// to store absolute pixel coordinates we would need i35 since there is 8 more coordinates per chunk
+        /// i64 is the closest we have to i35 for storing absolute pixel coordinates
+        
+        /// Stores list of pixels owned by specific account
         OwnedPixelArray get(pixel_of_owner_by_index): map (T::AccountId, u64) => (i64, i64);
+        /// Length of list of user-owned pixels
         OwnedPixelCount get(owned_pixel_count): map T::AccountId => u64;
+        /// Owner of pixel by absolute coordinates
         PixelOwner get(owner_of): map (i64, i64) => Option<T::AccountId>;
 
+        /// Main storage of the grid. Organized as i32xi32 map of pixel Vectors
         Chunks get(chunks): map (i32, i32) => Vec<Pixel<T::Balance>>;
     }
 }
