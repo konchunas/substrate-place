@@ -11,10 +11,14 @@
 //!  ### Terminology
 //!
 //! **Pixel:** single smallest unit of the board. Stores price and color of a dot on a board.
+//! 
 //! **Chunk:** Matrix of pixels (currently 8x8). Stored in chunks to optimize retreival by user
+//! 
 //! **Initialized chunk:** Chunk which has been filled with minimal price default color pixels. Happens when any chunk pixel is bought first time.
-//! **Absolute** or **Pixel coordinates** Coordinates on the grid without any relation to chunk whatsoever. Plain pixel address.
-//! **Chunk coordinates** First coordinate of 8x8 pixel group
+//! 
+//! **Absolute** or **Pixel coordinates**: Coordinates on the grid without any relation to chunk whatsoever. Plain pixel address.
+//! 
+//! **Chunk coordinates**: First coordinate of 8x8 pixel group
 //!
 //! ### Storage structure
 //!
