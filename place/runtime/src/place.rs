@@ -10,38 +10,51 @@
 //!
 //!  ### Terminology
 //!
-//! **Pixel:** single smallest unit of the board. Stores price and color of a dot on a board.
+//! - **Pixel:** single smallest unit of the board. Stores price and color of a dot on a board.
 //! 
-//! **Chunk:** Matrix of pixels (currently 8x8). Stored in chunks to optimize retreival by user
+//! - **Chunk:** Matrix of pixels (currently 8x8). Stored in chunks to optimize retreival by user
 //! 
-//! **Initialized chunk:** Chunk which has been filled with minimal price default color pixels. Happens when any chunk pixel is bought first time.
+//! - **Initialized chunk:** Chunk which has been filled with minimal price default color pixels. Happens when any chunk pixel is bought for the first time.
 //! 
-//! **Absolute** or **Pixel coordinates**: Coordinates on the grid without any relation to chunk whatsoever. Plain pixel address.
+//! - **Absolute** or **Pixel coordinates**: Coordinates on the grid without any relation to chunk whatsoever. Plain pixel address.
 //! 
-//! **Chunk coordinates**: First coordinate of 8x8 pixel group
+//! - **Chunk coordinates**: First coordinate of 8x8 pixel group
 //!
-//! ### Storage structure
+//! ### Storage organization
 //!
-//! Pixel is structure holding color and price. Color is array of 3 one-byte values each one representing color component: red, green and blue.
+//! A Pixel is a structure holding color and price. A Color is an array of 3 one-byte values each one representing a color component: red, green and blue.
 //! Every pixel is stored in so-called chunks. Logically chunks are 8x8 pixel matrices. To allow batch retreiving chunks are stored in 64-element Vectors.
-//! Every chunk on map is accessed by (i32, i32) coordinates. These coordinates can be both positive and negative.
-//! This practically means there can be 2^32 * 2^32 chunks. Since every chunk contains 8 pixel per axes it means we can have to contain 2^3 more pixels per chunk resulting in 2^35 * 2^35 pixel board.
+//! Every chunk on a map is accessed by (i32, i32) coordinates. These coordinates can be both positive and negative.
+//! This practically means there can be 2^32 * 2^32 chunks. Since every chunk contains 8 pixel per axis it means we have to contain 2^3 * 2^3 more pixels per chunk resulting in 2^35 * 2^35 pixel board. In the end representing Pixel coordinates as (i64, i64) is the closest we can get to 2^35 requirement.
 //!
-//! ### Usage
+//! ## Interface
 //! 
-//! To retreive latest state of the board `chunks` call is used. Pass desired chunk coord as tuple as input argument.
-//! 64-element array will be returned as an output if this chunk was already initialized, otherwise returning empty array
+//! ### Dispatchable functions
+//! 
+//! `purchase_pixel` - method to buy pixel on the board
+//! 
+//! `use_faucet` - testnet method to grant user some funds
+//! 
+//! ## Usage
+//! 
+//! To retreive latest state of the board `chunks` call is used. Pass desired chunk coordinate as a tuple as input argument.
+//! A 64-element array is returned as an output if this chunk was already initialized, otherwise returning empty array.
 //! 
 //! When user wants to buy a pixel on the board `purchase_pixel` method should be called.
 //! Its arguments are as follows:
 //!  - x, y - absolute coordinates of the pixel
-//!  - color - three-byte array with RGB coded desired color of a pixel
+//!  - color - three-byte array with RGB coded desired color of the pixel
 //!  - new_price - amount of funds user pays for this pixel
+//! 
+//! ## Goals
+//! 
+//! This module is intented to provide and manage huge matrix of items.
+//! It is not quite meant to be reused with different configuration options in custom chains. But it can be easily reworked into a game or some other interactive media requiring both a blockchain and some kind of visualized grid.
 //! 
 //! ### Dependencies
 //! 
-//! This module is reliant on Sudo module.
-//! It is needed to reward sudo user when first pixel in a chunk is bought.
+//! This module is relying on the Sudo module.
+//! It is needed to reward sudo user when pixel is bought for the first time.
 
 use rstd::prelude::*;
 
@@ -63,14 +76,16 @@ const DEFAULT_PRICE: u64 = 1;
 
 //2^31 for chunks in chunks in negative and positive direction
 //2^3 inside chunk per axis
+/// Grid bounds. Minimal axial coordinate of the pixel user can buy
 const MIN_COORD: i64 = -1 << 34; //2^31 + 2^3
+/// Grid bounds. Maximum axial coordinate of the pixel user can buy
 const MAX_COORD: i64 = (1 << 34) - 1; //2^31 + 2^3
 
 /// Represents RGB values. 3 channels 1 byte per color
 type Color = [u8; 3];
 
 
-/// Basic element of the grid, stored as Color and Price
+/// Basic element of the grid storing Color and Price
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct Pixel<Balance> {
@@ -96,20 +111,19 @@ decl_event!(
 
 decl_storage! {
     trait Store for Module<T: Trait> as PlaceStorage {
-
-        /// Whole field is stored as 8x8 chunks and those chunks are stored in i32xi32 map
-        /// to store absolute pixel coordinates we would need i35 since there is 8 more coordinates per chunk
-        /// i64 is the closest we have to i35 for storing absolute pixel coordinates
-        
+     
         /// Stores list of pixels owned by specific account
-        OwnedPixelArray get(pixel_of_owner_by_index): map (T::AccountId, u64) => (i64, i64);
+        pub OwnedPixelArray get(pixel_of_owner_by_index): map (T::AccountId, u64) => (i64, i64);
         /// Length of list of user-owned pixels
-        OwnedPixelCount get(owned_pixel_count): map T::AccountId => u64;
-        /// Owner of pixel by absolute coordinates
-        PixelOwner get(owner_of): map (i64, i64) => Option<T::AccountId>;
+        pub OwnedPixelCount get(owned_pixel_count): map T::AccountId => u64;
+        /// Owner of a pixel by absolute coordinates
+        pub PixelOwner get(owner_of): map (i64, i64) => Option<T::AccountId>;
 
-        /// Main storage of the grid. Organized as i32xi32 map of pixel Vectors
-        Chunks get(chunks): map (i32, i32) => Vec<Pixel<T::Balance>>;
+        /// Main storage of the grid. Organized as 8x8 chunks which are stored in i32xi32 map.
+        /// Refer to `chunks` method to retreive Vector of pixels contained by the chunk
+        pub Chunks get(chunks): map (i32, i32) => Vec<Pixel<T::Balance>>;
+
+
     }
 }
 
@@ -118,12 +132,14 @@ decl_module! {
 
         fn deposit_event<T>() = default;
 
-        /// Method to purchase specific pixel on the grid. Pixel is specified using `x` and `y` using absolute coordinates.
+        /// Buy a specific pixel on the grid. Pixel is specified using `x` and `y` using absolute coordinates.
         /// `color` is RGB 3-byte array. `price` is of Balance type.
         /// Price should be neccessary larger than previous price.
         /// Chunk coords of the pixel are calculated automatically.
         /// Caclculated chunk will be initialized if no pixel was ever bought on it.
-        fn purchase_pixel(origin, x: i64, y: i64, color: Color, new_price: T::Balance) -> Result {
+        /// 
+        /// The dispatch origin for this call must be `Signed` by the transactor.
+        pub fn purchase_pixel(origin, x: i64, y: i64, color: Color, new_price: T::Balance) -> Result {
             let sender = ensure_signed(origin)?;
 
             ensure!(MIN_COORD <= x && x <= MAX_COORD, "X is out of bounds");
@@ -176,9 +192,11 @@ decl_module! {
             Ok(())
         }
 
-        /// Testnet only method emulating faucet behaviour
-        /// Since Sudo user has all the funds we can grant somet to people for testing purposes
-        fn use_faucet(origin) {
+        /// Testnet only method emulating faucet behaviour.
+        /// Since Sudo user has all the funds we can grant some to people for testing purposes
+        /// 
+        /// The dispatch origin for this call must be `Signed` by the transactor.
+        pub fn use_faucet(origin) {
             //TODO limit to testnet-only
             let receiver = ensure_signed(origin)?;
             let amount = <T::Balance as As<u64>>::sa(1000);
