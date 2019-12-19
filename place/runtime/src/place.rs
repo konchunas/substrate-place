@@ -133,10 +133,10 @@ decl_module! {
         fn deposit_event<T>() = default;
 
         /// Buy a specific pixel on the grid. Pixel is specified using `x` and `y` using absolute coordinates.
-        /// `color` is RGB 3-byte array. `price` is of Balance type.
-        /// Price should be neccessary larger than previous price.
+        /// `color` is RGB 3-byte array. 
+        /// Price should be neccessarily larger than previous price.
         /// Chunk coords of the pixel are calculated automatically.
-        /// Caclculated chunk will be initialized if no pixel was ever bought on it.
+        /// Calculated chunk will be initialized if no pixel was ever bought on it.
         /// 
         /// The dispatch origin for this call must be `Signed` by the transactor.
         pub fn purchase_pixel(origin, x: i64, y: i64, color: Color, new_price: T::Balance) -> Result {
