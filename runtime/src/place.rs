@@ -86,7 +86,7 @@ use support::{
 };
 use system::ensure_signed;
 
-/// Represents how many pixels per axis there are in chunk
+/// Represents how many pixels per axis there are in a chunk
 const CHUNK_SIDE: usize = 8;
 
 /// Default price for never purchased before pixel
@@ -121,7 +121,7 @@ decl_event!(
         <T as system::Trait>::AccountId,
         <T as balances::Trait>::Balance
     {
-        //Emitted when new pixel is bought to show who bought it and what was the price
+        //Emitted when a new pixel is bought to show who bought it and what was the price
         Bought(AccountId, i64, i64, Balance),
     }
 );
@@ -130,15 +130,15 @@ decl_event!(
 decl_storage! {
     trait Store for Module<T: Trait> as PlaceStorage {
      
-        /// Stores list of pixels owned by specific account
+        /// Stores list of pixels owned by a specific account
         pub OwnedPixelArray get(pixel_of_owner_by_index): map (T::AccountId, u64) => (i64, i64);
-        /// Length of list of user-owned pixels
+        /// Length of a list of user-owned pixels
         pub OwnedPixelCount get(owned_pixel_count): map T::AccountId => u64;
         /// Owner of a pixel by absolute coordinates
         pub PixelOwner get(owner_of): map (i64, i64) => Option<T::AccountId>;
 
-        /// Main storage of the grid. Organized as 8x8 chunks which are stored in i32xi32 map.
-        /// Refer to `chunks` method to retreive Vector of pixels contained by the chunk
+        /// Main storage of the grid. Organized as 8x8 chunks which are stored in a i32xi32 map.
+        /// Refer to the `chunks` method to retrieve Vector of pixels contained by the chunk
         pub Chunks get(chunks): map (i32, i32) => Vec<Pixel<T::Balance>>;
 
 
@@ -152,7 +152,7 @@ decl_module! {
 
         /// Buy a specific pixel on the grid. Pixel is specified using `x` and `y` using absolute coordinates.
         /// `color` is RGB 3-byte array. 
-        /// Price should be neccessarily larger than previous price.
+        /// Price should be necessarily larger than the previous price.
         /// Chunk coords of the pixel are calculated automatically.
         /// Calculated chunk will be initialized if no pixel was ever bought on it.
         /// 
@@ -202,7 +202,7 @@ decl_module! {
                 color
             };
 
-            /// mutate single value in vector of pixels in calculated pixel index inside chunk vector
+            /// mutate single value in a vector of pixels of calculated pixel index inside chunk vector
             <Chunks<T>>::mutate((chunk_x, chunk_y), |chunk| chunk[pixel_index as usize] = new_pixel);
 
             Self::deposit_event(RawEvent::Bought(sender, x, y, new_price));
@@ -210,7 +210,7 @@ decl_module! {
             Ok(())
         }
 
-        /// Testnet only method emulating faucet behaviour.
+        /// Testnet only method emulating faucet behavior.
         /// Since Sudo user has all the funds we can grant some to people for testing purposes
         /// 
         /// The dispatch origin for this call must be `Signed` by the transactor.
@@ -400,7 +400,7 @@ mod tests {
             assert_eq!(Place::owner_of((1, 1)), None);
             // user purchases it
             assert_ok!(Place::purchase_pixel(Origin::signed(1), 1, 1, [1, 2, 3], 2));
-            // check user is owner now
+            // check that user is the owner now
             assert_eq!(Place::owner_of((1, 1)), Some(1));
             assert_eq!(Place::owned_pixel_count(1), 1);
             // first pixel of 10th user is at (1,1)
@@ -411,7 +411,7 @@ mod tests {
 
             // another user purchases the same pixel
             assert_ok!(Place::purchase_pixel(Origin::signed(5), 1, 1, [1, 2, 3], 3));
-            // check another user is owner now
+            // check another user is the owner now
             assert_eq!(Place::owner_of((1, 1)), Some(5));
             assert_eq!(Place::owned_pixel_count(5), 1);
             assert_eq!(Place::pixel_of_owner_by_index((5, 0)), (1, 1));
@@ -439,7 +439,7 @@ mod tests {
                 3
             ));
 
-            // check that we received first payment from uninitialized chunk
+            // check that we received the first payment from an uninitialized chunk
             assert_eq!(Balances::free_balance(Sudo::key()), 3);
 
             assert_ok!(Place::purchase_pixel(
@@ -449,7 +449,7 @@ mod tests {
                 [1, 2, 3],
                 4
             ));
-            // check that we received second payment from already initialized chunk
+            // check that we received second payment from the already initialized chunk
             assert_eq!(Balances::free_balance(Sudo::key()), 7);
         });
     }
