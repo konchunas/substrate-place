@@ -12,7 +12,7 @@
 //!
 //! - **Pixel:** single smallest unit of the board. Stores price and color of a dot on a board.
 //! 
-//! - **Chunk:** Matrix of pixels (currently 8x8). Stored in chunks to optimize retreival by user
+//! - **Chunk:** Matrix of pixels (currently 8x8). Stored in chunks to optimize retrieval by user
 //! 
 //! - **Initialized chunk:** Chunk which has been filled with minimal price default color pixels. Happens when any chunk pixel is bought for the first time.
 //! 
@@ -23,7 +23,7 @@
 //! ### Storage organization
 //!
 //! A Pixel is a structure holding color and price. A Color is an array of 3 one-byte values each one representing a color component: red, green and blue.
-//! Every pixel is stored in so-called chunks. Logically chunks are 8x8 pixel matrices. To allow batch retreiving chunks are stored in 64-element Vectors.
+//! Every pixel is stored in so-called chunks. Logically chunks are 8x8 pixel matrices. To allow batch retrieving chunks are stored in 64-element Vectors.
 //! Every chunk on a map is accessed by (i32, i32) coordinates. These coordinates can be both positive and negative.
 //! This practically means there can be 2^32 * 2^32 chunks. Since every chunk contains 8 pixel per axis it means we have to contain 2^3 * 2^3 more pixels per chunk resulting in 2^35 * 2^35 pixel board. In the end representing Pixel coordinates as (i64, i64) is the closest we can get to 2^35 requirement.
 //!
@@ -37,7 +37,7 @@
 //! 
 //! ## Usage
 //! 
-//! To retreive latest state of the board `chunks` call is used. Pass desired chunk coordinate as a tuple as input argument.
+//! To retrieve latest state of the board `chunks` call is used. Pass desired chunk coordinate as a tuple as input argument.
 //! A 64-element array is returned as an output if this chunk was already initialized, otherwise returning empty array.
 //! 
 //! When user wants to buy a pixel on the board `purchase_pixel` method should be called.
@@ -46,9 +46,27 @@
 //!  - color - three-byte array with RGB coded desired color of the pixel
 //!  - new_price - amount of funds user pays for this pixel
 //! 
+//! ### Example
+//! Buy a pixel at (0, 9)
+//! ```
+//! Place::purchase_pixel(&sender, 0, 9, [255, 0, 255], 12))
+//! ```
+//! 
+//! Get chunk at chunk including this pixel. (can be calculated by calling `from_absolute(0, 9)`)
+//! ```
+//! let chunk = Place::chunks((0, 1));
+//! ```
+//! 
+//! Second pixel of result is going to have our value
+//! 
+//! ```
+//! [{"price":5,"color":{"r":0,"g":88,"b":227}}, {"price":12,"color":{"r":255,"g":0,"b":255}}, ...<62 more pixels>]
+//! ```
+//! 
+//! 
 //! ## Goals
 //! 
-//! This module is intented to provide and manage huge matrix of items.
+//! This module is intended to provide and manage huge matrix of items.
 //! It is not quite meant to be reused with different configuration options in custom chains. But it can be easily reworked into a game or some other interactive media requiring both a blockchain and some kind of visualized grid.
 //! 
 //! ### Dependencies
