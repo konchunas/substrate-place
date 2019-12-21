@@ -1,14 +1,21 @@
 # Substrate Place
 
-This is an experiment in storing a huge pixel board on blockchain using Substrate runtime. Conceptually it is quite similar to Reddit r/place or Satoshi's place. Being unrestricted by capabilities of runtime modules contrary to Smart Contracts gives an ability to keep and access vast amounts of data in an arbitrary manner. Pixel board is one of examples which should map onto blockchain nicely. For example, in Ethereum users have  256-bit addresses. So if we take them all and map onto virtual 2^128 per 2^128 grid and convert balance to color we may see some kind of picture.
+This is an experiment in storing a huge pixel board on blockchain using Substrate runtime. Conceptually it is quite similar to Reddit r/place or Satoshi's place. Contrary to smart contracts languages, Substrate facilities are not as limited and able to keep and access vast amounts of data in an arbitrary manner. The idea here is to be able to buy a pixel on even farthest point of the map without any substantial burden on node processing power or storage cost. You might think of every pixel having unique address just like every user balance has an unique address. And since addresses are 256-bit long theoretical board size is promisingly huge.
 
-In this project I took this concept in a bit other direction. It allows you to store a 2^35 x 2^35 pixel grid on a blockchain. You can purchase a pixel for yourself. But anyone can re-buy it from you for a larger price that you have initially paid.
+This runtime module allows you to store a 2^35 x 2^35 pixel grid on a blockchain. You can purchase a pixel at any point on that grid. And anyone can re-buy it from you for a larger price that you have initially paid. Since this is a development version there is a faucet functionality for quicker testing and playing around.
 
-(talk about influence from Reddit r/place and Satoshi's place)
+## Storage organization
 
-## Storage
+The whole grid is split in chunks: 8x8 matrices of pixels accessed by (i32, i32) coordinates.V
+Chunk matrix is virtual and actually stored as 64-element vector.
+When purchasing a pixel client makes a request passing absolute pixel coordinates.
+But when downloading the state client is expected to request only chunks and only currently visible ones.
+Initially there is no chunks on the map. But as user chooses pixel to buy corresponding chunk gets initialized.
 
-Grid is stored in chunk and yada-yada (continue from documentation)
+## UI
+
+For reference implementation of the web client refer to https://github.com/konchunas/substrate-place-ui .
+It displays this module storage as pixel board and allows to navigate makes purchases.
 
 
 # Building
@@ -39,7 +46,7 @@ Build the WebAssembly binary:
 Build all native code:
 
 ```bash
-cargo build
+cargo build --release
 ```
 
 # Run
@@ -47,10 +54,5 @@ cargo build
 You can start a development chain with:
 
 ```bash
-cargo run -- --dev
+cargo run --release -- --dev
 ```
-
-# UI
-
-There is web UI required for this module to make more sense. It displays this module storage as Pixel board and allows to purchase your very own pixels.
-To try it in action follow https://github.com/konchunas/substrate-place-ui
