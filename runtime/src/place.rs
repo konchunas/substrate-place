@@ -1,50 +1,50 @@
 //! # The Place on Substrate
 //!
-//! The Place module provides functionality for huge pixel drawing board on Substrate
+//! The Place module provides functionality for a huge pixel drawing board on Substrate
 //!
 //! ## Overview
 //!
 //! The place module provides functions for:
 //! - Getting board state
-//! - Purchasing particular pixel
+//! - Purchasing a particular pixel
 //!
 //!  ### Terminology
 //!
-//! - **Pixel:** single smallest unit of the board. Stores price and color of a dot on a board.
+//! - **Pixel:** A single smallest unit of the board. Stores price and color of a dot on a board.
 //! 
-//! - **Chunk:** Matrix of pixels (currently 8x8). Stored in chunks to optimize retrieval by user
+//! - **Chunk:** A matrix of pixels (currently 8x8). Stored in chunks to optimize retrieval by a user
 //! 
-//! - **Initialized chunk:** Chunk which has been filled with minimal price default color pixels. Happens when any chunk pixel is bought for the first time.
+//! - **Initialized chunk:** A chunk which has been filled with a minimal-priced default color pixels. Happens when any chunk pixel is bought for the first time.
 //! 
-//! - **Absolute** or **Pixel coordinates**: Coordinates on the grid without any relation to chunk whatsoever. Plain pixel address.
+//! - **Absolute** or **Pixel coordinates**: Coordinates on the grid without any relation to a chunk whatsoever. A plain pixel address.
 //! 
-//! - **Chunk coordinates**: First coordinate of 8x8 pixel group
+//! - **Chunk coordinates**:  The first coordinate of an 8x8 pixels group
 //!
 //! ### Storage organization
 //!
 //! A Pixel is a structure holding color and price. A Color is an array of 3 one-byte values each one representing a color component: red, green and blue.
 //! Every pixel is stored in so-called chunks. Logically chunks are 8x8 pixel matrices. To allow batch retrieving chunks are stored in 64-element Vectors.
 //! Every chunk on a map is accessed by (i32, i32) coordinates. These coordinates can be both positive and negative.
-//! This practically means there can be 2^32 * 2^32 chunks. Since every chunk contains 8 pixel per axis it means we have to contain 2^3 * 2^3 more pixels per chunk resulting in 2^35 * 2^35 pixel board. In the end representing Pixel coordinates as (i64, i64) is the closest we can get to 2^35 requirement.
+//! This practically means there can be 2^32 * 2^32 chunks. Since every chunk contains 8 pixel per axis it means we have to contain 2^3 * 2^3 more pixels per chunk resulting in 2^35 * 2^35 pixel board. At the end representing Pixel coordinates as (i64, i64) is the closest we can get to 2^35 requirement.
 //!
 //! ## Interface
 //! 
 //! ### Dispatchable functions
 //! 
-//! `purchase_pixel` - method to buy pixel on the board
+//! `purchase_pixel` - method to buy a pixel on the board
 //! 
-//! `use_faucet` - testnet method to grant user some funds
+//! `use_faucet` - testnet method to grant a user some funds
 //! 
 //! ## Usage
 //! 
 //! To retrieve latest state of the board `chunks` call is used. Pass desired chunk coordinate as a tuple as input argument.
-//! A 64-element array is returned as an output if this chunk was already initialized, otherwise returning empty array.
+//! A 64-element array is returned as an output if this chunk was already initialized, otherwise returning an empty array.
 //! 
-//! When user wants to buy a pixel on the board `purchase_pixel` method should be called.
+//! When the user wants to buy a pixel on the board `purchase_pixel` method should be called.
 //! Its arguments are as follows:
-//!  - x, y - absolute coordinates of the pixel
-//!  - color - three-byte array with RGB coded desired color of the pixel
-//!  - new_price - amount of funds user pays for this pixel
+//!  - x, y - an absolute coordinates of the pixel
+//!  - color - a three-byte array with RGB coded the desired color of the pixel
+//!  - new_price - the amount of funds user pays for the pixel
 //! 
 //! ### Example
 //! Buy a pixel at (0, 9)
@@ -52,12 +52,12 @@
 //! Place::purchase_pixel(&sender, 0, 9, [255, 0, 255], 12))
 //! ```
 //! 
-//! Get chunk at chunk including this pixel. (can be calculated by calling `from_absolute(0, 9)`)
+//! Get chunk including this pixel. (can be calculated by calling `from_absolute(0, 9)`)
 //! ```
 //! let chunk = Place::chunks((0, 1));
 //! ```
 //! 
-//! Second pixel of result is going to have our value
+//! The second pixel of the result is going to have our value
 //! 
 //! ```
 //! [{"price":5,"color":{"r":0,"g":88,"b":227}}, {"price":12,"color":{"r":255,"g":0,"b":255}}, ...<62 more pixels>]
@@ -66,7 +66,7 @@
 //! 
 //! ## Goals
 //! 
-//! This module is intended to provide and manage huge matrix of items.
+//! This module is intended to provide and manage a huge matrix of items.
 //! It is not quite meant to be reused with different configuration options in custom chains. But it can be easily reworked into a game or some other interactive media requiring both a blockchain and some kind of visualized grid.
 //! 
 //! ### Dependencies
