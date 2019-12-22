@@ -17,6 +17,7 @@ Initially there is no chunks on the map. But as user chooses pixel to buy corres
 For reference implementation of the web client refer to https://github.com/konchunas/substrate-place-ui .
 It displays this module storage as pixel board and allows to navigate makes purchases.
 
+You can check testnet demo with included faucet at http://konchunas.com:5000/
 
 # Building
 
